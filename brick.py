@@ -121,3 +121,22 @@ class Paddle(GameObject):
         cx = self.center_x()
         self.width = new_width
         self.move_to(cx)
+
+class Brick(GameObject):
+    def __init__(self, canvas, x, y, hits):
+        self.width = 71
+        self.height = 20
+        self.hits = hits
+        item = canvas.create_rectangle(x - self.width / 2, y - self.height / 2,
+                                       x + self.width / 2, y + self.height / 2,
+                                       fill=BRICK_COLORS[hits],
+                                       outline=BG_COLOR, width=2)
+        super().__init__(canvas, item)
+
+    def hit(self):
+        self.hits -= 1
+        if self.hits <= 0:
+            self.delete()
+            return True
+        self.canvas.itemconfig(self.item, fill=BRICK_COLORS[self.hits])
+        return False
