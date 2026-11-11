@@ -140,3 +140,22 @@ class Brick(GameObject):
             return True
         self.canvas.itemconfig(self.item, fill=BRICK_COLORS[self.hits])
         return False
+
+class PowerUp(GameObject):
+    def __init__(self, canvas, x, y, kind):
+        self.kind = kind
+        self.speed = 3
+        color, symbol = POWERUPS[kind]
+        item = canvas.create_oval(x - 11, y - 11, x + 11, y + 11,
+                                fill=color, outline='white')
+        super().__init__(canvas, item)
+        self.label = canvas.create_text(x, y, text=symbol, fill='white',
+                                        font=('Helvetica', 11, 'bold'))
+
+    def update(self):
+        self.move(0, self.speed)
+        self.canvas.move(self.label, 0, self.speed)
+
+    def delete(self):
+        self.canvas.delete(self.label)
+        super().delete()
