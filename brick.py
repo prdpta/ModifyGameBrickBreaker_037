@@ -283,3 +283,184 @@ class Game(tk.Frame):
             self.start_level()
         elif self.state == 'over':
             self.new_game()
+
+    def toggle_pause(self):
+        if self.state == 'playing':
+            self.state = 'paused'
+            self.show_message('Pause\nTekan P untuk lanjut')
+        elif self.state == 'paused':
+            self.clear_message()
+            self.state = 'playing'
+
+    def tick(self):
+        if self.state in ('ready', 'playing'):
+            if self.keys & {'left', 'a'}:
+                self.paddle.move_by(-9)
+            if self.keys & {'right', 'd'}:
+                self.paddle.move_by(9)
+
+        if self.state == 'ready':
+            self.attach_ball()
+        elif self.state == 'playing':
+            self.update_playing()
+        self.after(FRAME_MS, self.tick)
+
+    def update_playing(self):
+        self.update_effects()
+        self.ball.update()
+        self.check_paddle()
+        self.check_bricks()
+        self.update_powerups()
+        if self.ball.get_position()[3] >= self.height:
+            self.lose_life()
+        elif not self.bricks:
+            self.level_clear()
+
+    def level_speed(self):
+        return min(4.5 + 0.4 * (self.level - 1), 8.5)
+
+    def update_effects(self):
+        if self.wide_frames > 0:
+            self.wide_frames -= 1
+            if self.wide_frames == 0:
+                self.paddle.set_width(self.paddle.base_width)
+        if self.slow_frames > 0:
+            self.slow_frames -= 1
+        factor = 0.65 if self.slow_frames > 0 else 1.0
+        self.ball.speed = self.level_speed() * factor
+        self.update_hud()
+
+    def check_paddle(self):
+        bx1, by1, bx2, by2 = self.ball.get_position()
+        px1, py1, px2, py2 = self.paddle.get_position()
+        cy = (by1 + by2) / 2
+        if (self.ball.dy > 0 and bx2 >= px1 and bx1 <= px2
+                and by2 >= py1 and by1 <= py2 and cy <= (py1 + py2) / 2):
+            self.ball.bounce_off_paddle(self.paddle)
+
+    def check_bricks(self):
+        ids = self.canvas.find_overlapping(*self.ball.get_position())
+        overlapped = [self.bricks[i] for i in ids if i in self.bricks]
+        fresh = [b for b in overlapped if b is not self.last_brick]
+        self.last_brick = overlapped[0] if overlapped else None
+        if not fresh:
+            return
+
+        self.ball.deflect_from_brick(fresh[0].get_position(), len(fresh) > 1)
+        for brick in fresh:
+            x1, y1, x2, y2 = brick.get_position()
+            self.score += 10
+            if brick.hit():
+                self.score += 10 * self.level
+                del self.bricks[brick.item]
+                if random.random() < 0.15:
+                    self.spawn_powerup((x1 + x2) / 2, (y1 + y2) / 2)
+        if self.score > self.highscore:
+            self.highscore = self.score
+        self.update_hud()
+
+    def spawn_powerup(self, x, y):
+        kind = random.choice(['wide', 'slow', 'life'])
+        self.powerups.append(PowerUp(self.canvas, x, y, kind))
+
+    def update_powerups(self):
+        px1, py1, px2, py2 = self.paddle.get_position()
+        for p in self.powerups[:]:
+            p.update()
+            x1, y1, x2, y2 = p.get_position()
+            if y2 >= py1 and y1 <= py2 and x2 >= px1 and x1 <= px2:
+                self.apply_powerup(p.kind)
+                p.delete()
+                self.powerups.remove(p)
+            elif y1 > self.height:
+                p.delete()
+                self.powerups.remove(p)
+
+    def apply_powerup(self, kind):
+        if kind == 'wide':
+            self.wide_frames = 600
+            self.paddle.set_width(150)
+        elif kind == 'slow':
+            self.slow_frames = 480
+        elif kind == 'life':
+            self.lives = min(self.lives + 1, 5)
+        self.score += 25
+        self.update_hud()
+
+    def clear_powerups(self):
+        for p in self.powerups:
+            p.delete()
+        self.powerups.clear()
+
+    def lose_life(self):
+        self.lives -= 1
+        self.clear_powerups()
+        self.wide_frames = 0
+        self.slow_frames = 0
+        self.paddle.set_width(self.paddle.base_width)
+        self.last_brick = None
+        self.update_hud()
+        if self.lives <= 0:
+            self.state = 'over'
+            self.save_highscore()
+            self.show_message('GAME OVER\nSkor: %d   Rekor: %d\n'
+                              'Tekan Spasi untuk main lagi'
+                              % (self.score, self.highscore))
+        else:
+            self.new_ball()
+            self.state = 'ready'
+            self.show_message('Nyawa berkurang!\nTekan Spasi untuk lanjut')
+
+    def level_clear(self):
+        self.state = 'level_clear'
+        self.clear_powerups()
+        self.score += 100 * self.level
+        self.save_highscore()
+        self.update_hud()
+        self.show_message('Level %d selesai!  +%d\nTekan Spasi untuk lanjut'
+                          % (self.level, 100 * self.level))
+
+    def update_hud(self):
+        self.canvas.itemconfig(self.hud_score, text='Skor: %d   Rekor: %d'
+                               % (self.score, self.highscore))
+        self.canvas.itemconfig(self.hud_level, text='Level %d' % self.level)
+        self.canvas.itemconfig(self.hud_lives, text='\u2665 ' * self.lives)
+        effects = []
+        if self.wide_frames > 0:
+            effects.append('Lebar %ds' % math.ceil(self.wide_frames * FRAME_MS / 1000))
+        if self.slow_frames > 0:
+            effects.append('Lambat %ds' % math.ceil(self.slow_frames * FRAME_MS / 1000))
+        self.canvas.itemconfig(self.hud_effects, text='  |  '.join(effects))
+
+    def show_message(self, text):
+        self.clear_message()
+        self.message = self.canvas.create_text(
+            self.width / 2, self.height / 2 + 50, text=text, fill='white',
+            font=('Helvetica', 20, 'bold'), justify='center')
+
+    def clear_message(self):
+        if self.message is not None:
+            self.canvas.delete(self.message)
+            self.message = None
+
+    def load_highscore(self):
+        try:
+            with open(HIGHSCORE_FILE) as f:
+                return int(f.read().strip())
+        except (OSError, ValueError):
+            return 0
+
+    def save_highscore(self):
+        try:
+            with open(HIGHSCORE_FILE, 'w') as f:
+                f.write(str(self.highscore))
+        except OSError:
+            pass
+
+
+if __name__ == '__main__':
+    root = tk.Tk()
+    root.title('Brick Breaker - Pradipta 20230140037')
+    root.resizable(False, False)
+    game = Game(root)
+    game.mainloop()
