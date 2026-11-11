@@ -91,3 +91,33 @@ def deflect_from_brick(self, brick_coords, multiple):
             self.dx = -abs(self.dx) if cx < bcx else abs(self.dx)
         else:
             self.dy = -abs(self.dy) if cy < bcy else abs(self.dy)
+
+class Paddle(GameObject):
+    def __init__(self, canvas, x, y, bounds_width):
+        self.base_width = 100
+        self.width = self.base_width
+        self.height = 12
+        self.y = y
+        self.bounds = bounds_width
+        item = canvas.create_rectangle(x - self.width / 2, y - self.height / 2,
+                                       x + self.width / 2, y + self.height / 2,
+                                       fill=PADDLE_COLOR, outline='white')
+        super().__init__(canvas, item)
+
+    def center_x(self):
+        c = self.get_position()
+        return (c[0] + c[2]) / 2
+
+    def move_to(self, cx):
+        half = self.width / 2
+        cx = max(half, min(self.bounds - half, cx))
+        self.canvas.coords(self.item, cx - half, self.y - self.height / 2,
+                           cx + half, self.y + self.height / 2)
+
+    def move_by(self, dx):
+        self.move_to(self.center_x() + dx)
+
+    def set_width(self, new_width):
+        cx = self.center_x()
+        self.width = new_width
+        self.move_to(cx)
