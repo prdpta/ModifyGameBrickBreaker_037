@@ -159,3 +159,127 @@ class PowerUp(GameObject):
     def delete(self):
         self.canvas.delete(self.label)
         super().delete()
+
+class Game(tk.Frame):
+    def __init__(self, master):
+        super().__init__(master)
+        self.width, self.height = WIDTH, HEIGHT
+        self.canvas = tk.Canvas(self, bg=BG_COLOR, width=self.width,
+                                height=self.height, highlightthickness=0)
+        self.canvas.pack()
+        self.pack()
+
+        self.draw_background()
+        self.highscore = self.load_highscore()
+        self.keys = set()
+        self.bricks = {}
+        self.powerups = []
+        self.ball = None
+        self.message = None
+        self.last_brick = None
+        self.state = 'ready'
+
+        self.paddle = Paddle(self.canvas, self.width / 2, self.height - 40,
+                             self.width)
+        self.hud_score = self.canvas.create_text(
+            15, 18, anchor='w', fill=TEXT_COLOR, font=('Helvetica', 13, 'bold'))
+        self.hud_level = self.canvas.create_text(
+            self.width / 2, 18, fill=TEXT_COLOR, font=('Helvetica', 13, 'bold'))
+        self.hud_lives = self.canvas.create_text(
+            self.width - 15, 18, anchor='e', fill='#f43f5e',
+            font=('Helvetica', 14, 'bold'))
+        self.hud_effects = self.canvas.create_text(
+            10, self.height - 10, anchor='w', fill='#94a3b8',
+            font=('Helvetica', 10))
+
+        self.new_game()
+
+        master.bind('<KeyPress>', self.on_key_press)
+        master.bind('<KeyRelease>', self.on_key_release)
+        self.canvas.bind('<Motion>', self.on_mouse_move)
+        self.tick()
+
+    def draw_background(self):
+        for _ in range(70):
+            x = random.randint(0, self.width)
+            y = random.randint(0, self.height)
+            self.canvas.create_oval(x, y, x + 2, y + 2, outline='',
+                                    fill=random.choice(['#334155', '#475569',
+                                                        '#64748b']))
+
+    def new_game(self):
+        self.score = 0
+        self.lives = 3
+        self.level = 1
+        self.wide_frames = 0
+        self.slow_frames = 0
+        self.paddle.set_width(self.paddle.base_width)
+        self.start_level()
+
+    def start_level(self):
+        for brick in self.bricks.values():
+            self.canvas.delete(brick.item)
+        self.bricks.clear()
+        self.clear_powerups()
+        self.build_level()
+        self.new_ball()
+        self.state = 'ready'
+        self.update_hud()
+        self.show_message('Level %d\nTekan Spasi untuk mulai' % self.level)
+
+    def build_level(self):
+        rows = min(3 + self.level, 7)
+        for r in range(rows):
+            if self.level >= 3 and r == 0:
+                hits = 3
+            elif r == 0 or (self.level >= 2 and r == 1):
+                hits = 2
+            else:
+                hits = 1
+            for c in range(8):
+                if self.level >= 2 and random.random() < 0.12:
+                    continue
+                self.add_brick(5 + c * 75 + 37.5, 60 + r * 24, hits)
+        if not self.bricks:
+            self.add_brick(self.width / 2, 60, 1)
+
+    def add_brick(self, x, y, hits):
+        brick = Brick(self.canvas, x, y, hits)
+        self.bricks[brick.item] = brick
+
+    def new_ball(self):
+        if self.ball is not None:
+            self.ball.delete()
+        self.ball = Ball(self.canvas, 0, 0, self.width)
+        self.attach_ball()
+
+    def attach_ball(self):
+        p = self.paddle.get_position()
+        self.ball.set_center(self.paddle.center_x(),
+                             p[1] - self.ball.radius - 1)
+
+    def on_key_press(self, event):
+        key = event.keysym.lower()
+        self.keys.add(key)
+        if key == 'space':
+            self.on_space()
+        elif key == 'p':
+            self.toggle_pause()
+
+    def on_key_release(self, event):
+        self.keys.discard(event.keysym.lower())
+
+    def on_mouse_move(self, event):
+        if self.state in ('ready', 'playing'):
+            self.paddle.move_to(event.x)
+
+    def on_space(self):
+        if self.state == 'ready':
+            self.clear_message()
+            self.ball.launch()
+            self.state = 'playing'
+        elif self.state == 'level_clear':
+            self.level += 1
+            self.start_level()
+        elif self.state == 'over':
+            self.new_game()
